@@ -1,0 +1,8 @@
+{
+  "name": "marina-skill",
+  "version": "0.1.0",
+  "description": "Claude Code skills for managing Hetzner servers, Cloudflare DNS, and Docker deployments",
+  "author": {
+    "name": "Will Schenk"
+  }
+}

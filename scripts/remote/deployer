@@ -1,0 +1,83 @@
+#!/bin/bash
+set -euo pipefail
+
+function log {
+    echo "$(date +"%Y-%m-%dT%H:%M:%S") ${site:-} $@" >> ~/log
+}
+
+function parse_soc {
+    read -a strarr <<< $SSH_ORIGINAL_COMMAND
+    cmd=${strarr[0]}
+    site=$(echo ${strarr[1]:-} | sed s/\'//g | sed s/\.git//)
+}
+
+function git_cmd {
+    ensure_repository
+    ${cmd} $(repository_dir)
+    restart
+}
+
+function restart {
+    log "Stopping container ${site}"
+    log $(docker stop ${site} && docker rm ${site} || true)
+
+    env_file=""
+    if [[ -f "$HOME/${site}/config" ]]; then
+        env_file="--env-file $HOME/${site}/config"
+    fi
+
+    log "Starting new container ${site}"
+    log $(docker run \
+        --detach \
+        --name ${site} \
+        --network caddy \
+        ${env_file} \
+        --label caddy=${site} \
+        --label "caddy.reverse_proxy={{upstreams 8080}}" \
+        ${site}:latest)
+}
+
+function ensure_repository {
+    mkdir -p $(repository_dir)
+    if [ ! -f "$(repository_dir)/HEAD" ]; then
+        log "Creating bare repository in $(repository_dir)"
+        cd $(repository_dir)
+        git config --global init.defaultBranch main
+        git init --bare >> ~/log
+    fi
+    log "Updating hooks/post-receive"
+    cp $HOME/post-receive $(repository_dir)/hooks/post-receive
+    chmod +x $(repository_dir)/hooks/post-receive
+}
+
+function repository_dir {
+    if [ -z "${site}" ]; then
+        log "site not set"
+        exit 1
+    fi
+    echo "${HOME}/${site}/git"
+}
+
+if [ -z "${SSH_ORIGINAL_COMMAND:-}" ]; then
+    echo "--- It looks like you are trying to ssh in directly ---"
+    tail -20 ~/log 2>/dev/null || true
+    echo "--- Bye now ---"
+    exit 0
+fi
+
+log "------"
+log "deployer starting with $@"
+
+parse_soc
+log "cmd = ${cmd}"
+
+if [[ "${cmd}" == "git"* ]]; then
+    git_cmd
+elif [[ "${cmd}" == "restart" ]]; then
+    restart
+else
+    log "Running $SSH_ORIGINAL_COMMAND"
+    $SSH_ORIGINAL_COMMAND
+fi
+
+log "exit"

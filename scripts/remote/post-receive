@@ -1,0 +1,20 @@
+#!/bin/bash
+set -euo pipefail
+
+read oldrev newrev refname
+echo "Building $newrev"
+
+cd ..
+site=$(basename $PWD)
+echo "Site is ${site}"
+
+workdir=workdir
+mkdir -p ${workdir}
+
+echo "Checking out ${newrev} into ${workdir}"
+git --git-dir=git --work-tree=${workdir} checkout -f $newrev
+
+cd ${workdir}
+echo "Running build"
+
+docker build . -t ${site}
